@@ -6,7 +6,7 @@ from aiocache import cached
 from typing import Any, Optional
 import random
 import json
-import inspect
+
 import uuid
 import asyncio
 
@@ -40,7 +40,10 @@ from open_webui.models.functions import Functions
 from open_webui.models.models import Models
 
 
-from open_webui.utils.plugin import load_function_module_by_id
+from open_webui.utils.plugin import (
+    load_function_module_by_id,
+    get_function_module_from_cache,
+)
 from open_webui.utils.models import get_all_models, check_model_access
 from open_webui.utils.payload import convert_payload_openai_to_ollama
 from open_webui.utils.response import (
@@ -52,12 +55,10 @@ from open_webui.utils.filter import (
     process_filter_functions,
 )
 
-from open_webui.env import SRC_LOG_LEVELS, GLOBAL_LOG_LEVEL, BYPASS_MODEL_ACCESS_CONTROL
-
+from open_webui.env import GLOBAL_LOG_LEVEL, BYPASS_MODEL_ACCESS_CONTROL
 
 logging.basicConfig(stream=sys.stdout, level=GLOBAL_LOG_LEVEL)
 log = logging.getLogger(__name__)
-log.setLevel(SRC_LOG_LEVELS["MAIN"])
 
 
 async def generate_direct_chat_completion(
@@ -77,6 +78,7 @@ async def generate_direct_chat_completion(
     event_caller = get_event_call(metadata)
 
     channel = f"{user_id}:{session_id}:{request_id}"
+    logging.info(f"WebSocket channel: {channel}")
 
     if form_data.get("stream"):
         q = asyncio.Queue()
@@ -118,7 +120,10 @@ async def generate_direct_chat_completion(
 
                             yield f"data: {json.dumps(data)}\n\n"
                         elif isinstance(data, str):
-                            yield data
+                            if "data:" in data:
+                                yield f"{data}\n\n"
+                            else:
+                                yield f"data: {data}\n\n"
                 except Exception as e:
                     log.debug(f"Error in event generator: {e}")
                     pass
@@ -160,6 +165,7 @@ async def generate_chat_completion(
     form_data: dict,
     user: Any,
     bypass_filter: bool = False,
+    bypass_system_prompt: bool = False,
 ):
     log.debug(f"generate_chat_completion: {form_data}")
     if BYPASS_MODEL_ACCESS_CONTROL:
@@ -231,7 +237,11 @@ async def generate_chat_completion(
                         yield chunk
 
                 response = await generate_chat_completion(
-                    request, form_data, user, bypass_filter=True
+                    request,
+                    form_data,
+                    user,
+                    bypass_filter=True,
+                    bypass_system_prompt=bypass_system_prompt,
                 )
                 return StreamingResponse(
                     stream_wrapper(response.body_iterator),
@@ -242,7 +252,11 @@ async def generate_chat_completion(
                 return {
                     **(
                         await generate_chat_completion(
-                            request, form_data, user, bypass_filter=True
+                            request,
+                            form_data,
+                            user,
+                            bypass_filter=True,
+                            bypass_system_prompt=bypass_system_prompt,
                         )
                     ),
                     "selected_model_id": selected_model_id,
@@ -261,6 +275,7 @@ async def generate_chat_completion(
                 form_data=form_data,
                 user=user,
                 bypass_filter=bypass_filter,
+                bypass_system_prompt=bypass_system_prompt,
             )
             if form_data.get("stream"):
                 response.headers["content-type"] = "text/event-stream"
@@ -277,6 +292,7 @@ async def generate_chat_completion(
                 form_data=form_data,
                 user=user,
                 bypass_filter=bypass_filter,
+                bypass_system_prompt=bypass_system_prompt,
             )
 
 
@@ -304,11 +320,12 @@ async def chat_completed(request: Request, form_data: dict, user: Any):
     try:
         data = await process_pipeline_outlet_filter(request, data, user, models)
     except Exception as e:
-        return Exception(f"Error: {e}")
+        raise Exception(f"Error: {e}")
 
     metadata = {
         "chat_id": data["chat_id"],
         "message_id": data["id"],
+        "filter_ids": data.get("filter_ids", []),
         "session_id": data["session_id"],
         "user_id": user.id,
     }
@@ -316,22 +333,17 @@ async def chat_completed(request: Request, form_data: dict, user: Any):
     extra_params = {
         "__event_emitter__": get_event_emitter(metadata),
         "__event_call__": get_event_call(metadata),
-        "__user__": {
-            "id": user.id,
-            "email": user.email,
-            "name": user.name,
-            "role": user.role,
-        },
+        "__user__": user.model_dump() if isinstance(user, UserModel) else {},
         "__metadata__": metadata,
         "__request__": request,
         "__model__": model,
     }
 
     try:
-        filter_functions = [
-            Functions.get_function_by_id(filter_id)
-            for filter_id in get_sorted_filter_ids(model)
-        ]
+        filter_ids = get_sorted_filter_ids(
+            request, model, metadata.get("filter_ids", [])
+        )
+        filter_functions = Functions.get_functions_by_ids(filter_ids)
 
         result, _ = await process_filter_functions(
             request=request,
@@ -342,111 +354,4 @@ async def chat_completed(request: Request, form_data: dict, user: Any):
         )
         return result
     except Exception as e:
-        return Exception(f"Error: {e}")
-
-
-async def chat_action(request: Request, action_id: str, form_data: dict, user: Any):
-    if "." in action_id:
-        action_id, sub_action_id = action_id.split(".")
-    else:
-        sub_action_id = None
-
-    action = Functions.get_function_by_id(action_id)
-    if not action:
-        raise Exception(f"Action not found: {action_id}")
-
-    if not request.app.state.MODELS:
-        await get_all_models(request, user=user)
-
-    if getattr(request.state, "direct", False) and hasattr(request.state, "model"):
-        models = {
-            request.state.model["id"]: request.state.model,
-        }
-    else:
-        models = request.app.state.MODELS
-
-    data = form_data
-    model_id = data["model"]
-
-    if model_id not in models:
-        raise Exception("Model not found")
-    model = models[model_id]
-
-    __event_emitter__ = get_event_emitter(
-        {
-            "chat_id": data["chat_id"],
-            "message_id": data["id"],
-            "session_id": data["session_id"],
-            "user_id": user.id,
-        }
-    )
-    __event_call__ = get_event_call(
-        {
-            "chat_id": data["chat_id"],
-            "message_id": data["id"],
-            "session_id": data["session_id"],
-            "user_id": user.id,
-        }
-    )
-
-    if action_id in request.app.state.FUNCTIONS:
-        function_module = request.app.state.FUNCTIONS[action_id]
-    else:
-        function_module, _, _ = load_function_module_by_id(action_id)
-        request.app.state.FUNCTIONS[action_id] = function_module
-
-    if hasattr(function_module, "valves") and hasattr(function_module, "Valves"):
-        valves = Functions.get_function_valves_by_id(action_id)
-        function_module.valves = function_module.Valves(**(valves if valves else {}))
-
-    if hasattr(function_module, "action"):
-        try:
-            action = function_module.action
-
-            # Get the signature of the function
-            sig = inspect.signature(action)
-            params = {"body": data}
-
-            # Extra parameters to be passed to the function
-            extra_params = {
-                "__model__": model,
-                "__id__": sub_action_id if sub_action_id is not None else action_id,
-                "__event_emitter__": __event_emitter__,
-                "__event_call__": __event_call__,
-                "__request__": request,
-            }
-
-            # Add extra params in contained in function signature
-            for key, value in extra_params.items():
-                if key in sig.parameters:
-                    params[key] = value
-
-            if "__user__" in sig.parameters:
-                __user__ = {
-                    "id": user.id,
-                    "email": user.email,
-                    "name": user.name,
-                    "role": user.role,
-                }
-
-                try:
-                    if hasattr(function_module, "UserValves"):
-                        __user__["valves"] = function_module.UserValves(
-                            **Functions.get_user_valves_by_id_and_user_id(
-                                action_id, user.id
-                            )
-                        )
-                except Exception as e:
-                    log.exception(f"Failed to get user values: {e}")
-
-                params = {**params, "__user__": __user__}
-
-            if inspect.iscoroutinefunction(action):
-                data = await action(**params)
-            else:
-                data = action(**params)
-
-        except Exception as e:
-            return Exception(f"Error: {e}")
-
-    return data
+        raise Exception(f"Error: {e}")

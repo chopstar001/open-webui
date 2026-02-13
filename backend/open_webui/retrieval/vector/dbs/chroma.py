@@ -5,7 +5,14 @@ from chromadb.utils.batch_utils import create_batches
 
 from typing import Optional
 
-from open_webui.retrieval.vector.main import VectorItem, SearchResult, GetResult
+from open_webui.retrieval.vector.main import (
+    VectorDBBase,
+    VectorItem,
+    SearchResult,
+    GetResult,
+)
+from open_webui.retrieval.vector.utils import process_metadata
+
 from open_webui.config import (
     CHROMA_DATA_PATH,
     CHROMA_HTTP_HOST,
@@ -17,13 +24,11 @@ from open_webui.config import (
     CHROMA_CLIENT_AUTH_PROVIDER,
     CHROMA_CLIENT_AUTH_CREDENTIALS,
 )
-from open_webui.env import SRC_LOG_LEVELS
 
 log = logging.getLogger(__name__)
-log.setLevel(SRC_LOG_LEVELS["RAG"])
 
 
-class ChromaClient:
+class ChromaClient(VectorDBBase):
     def __init__(self):
         settings_dict = {
             "allow_reset": True,
@@ -64,7 +69,11 @@ class ChromaClient:
         return self.client.delete_collection(name=collection_name)
 
     def search(
-        self, collection_name: str, vectors: list[list[float | int]], limit: int
+        self,
+        collection_name: str,
+        vectors: list[list[float | int]],
+        filter: Optional[dict] = None,
+        limit: int = 10,
     ) -> Optional[SearchResult]:
         # Search for the nearest neighbor items based on the vectors and return 'limit' number of results.
         try:
@@ -73,6 +82,7 @@ class ChromaClient:
                 result = collection.query(
                     query_embeddings=vectors,
                     n_results=limit,
+                    where=filter,
                 )
 
                 # chromadb has cosine distance, 2 (worst) -> 0 (best). Re-odering to 0 -> 1
@@ -139,7 +149,7 @@ class ChromaClient:
         ids = [item["id"] for item in items]
         documents = [item["text"] for item in items]
         embeddings = [item["vector"] for item in items]
-        metadatas = [item["metadata"] for item in items]
+        metadatas = [process_metadata(item["metadata"]) for item in items]
 
         for batch in create_batches(
             api=self.client,
@@ -159,7 +169,7 @@ class ChromaClient:
         ids = [item["id"] for item in items]
         documents = [item["text"] for item in items]
         embeddings = [item["vector"] for item in items]
-        metadatas = [item["metadata"] for item in items]
+        metadatas = [process_metadata(item["metadata"]) for item in items]
 
         collection.upsert(
             ids=ids, documents=documents, embeddings=embeddings, metadatas=metadatas

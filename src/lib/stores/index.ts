@@ -8,6 +8,10 @@ import emojiShortCodes from '$lib/emoji-shortcodes.json';
 
 // Backend
 export const WEBUI_NAME = writable(APP_NAME);
+
+export const WEBUI_VERSION = writable(null);
+export const WEBUI_DEPLOYMENT_ID = writable(null);
+
 export const config: Writable<Config | undefined> = writable(undefined);
 export const user: Writable<SessionUser | undefined> = writable(undefined);
 
@@ -23,6 +27,7 @@ export const mobile = writable(false);
 
 export const socket: Writable<null | Socket> = writable(null);
 export const activeUserIds: Writable<null | string[]> = writable(null);
+export const activeChatIds: Writable<Set<string>> = writable(new Set());
 export const USAGE_POOL: Writable<null | string[]> = writable(null);
 
 export const theme = writable('system');
@@ -47,15 +52,21 @@ export const chatId = writable('');
 export const chatTitle = writable('');
 
 export const channels = writable([]);
+export const channelId = writable(null);
+
 export const chats = writable(null);
 export const pinnedChats = writable([]);
 export const tags = writable([]);
+export const folders = writable([]);
+
+export const selectedFolder = writable(null);
 
 export const models: Writable<Model[]> = writable([]);
 
 export const prompts: Writable<null | Prompt[]> = writable(null);
 export const knowledge: Writable<null | Document[]> = writable(null);
 export const tools = writable(null);
+export const skills = writable(null);
 export const functions = writable(null);
 
 export const toolServers = writable([]);
@@ -64,15 +75,27 @@ export const banners: Writable<Banner[]> = writable([]);
 
 export const settings: Writable<Settings> = writable({});
 
+export const audioQueue = writable(null);
+
+export const sidebarWidth = writable(260);
+
 export const showSidebar = writable(false);
+export const showSearch = writable(false);
 export const showSettings = writable(false);
+export const showShortcuts = writable(false);
 export const showArchivedChats = writable(false);
 export const showChangelog = writable(false);
 
 export const showControls = writable(false);
+export const showEmbeds = writable(false);
 export const showOverview = writable(false);
 export const showArtifacts = writable(false);
 export const showCallOverlay = writable(false);
+
+export const artifactCode = writable(null);
+export const artifactContents = writable(null);
+
+export const embed = writable(null);
 
 export const temporaryChatEnabled = writable(false);
 export const scrollPaginationEnabled = writable(false);
@@ -132,6 +155,43 @@ type OllamaModelDetails = {
 };
 
 type Settings = {
+	pinnedModels?: never[];
+	toolServers?: never[];
+	detectArtifacts?: boolean;
+	showUpdateToast?: boolean;
+	showChangelog?: boolean;
+	showEmojiInCall?: boolean;
+	voiceInterruption?: boolean;
+	collapseCodeBlocks?: boolean;
+	expandDetails?: boolean;
+	notificationSound?: boolean;
+	notificationSoundAlways?: boolean;
+	stylizedPdfExport?: boolean;
+	notifications?: any;
+	imageCompression?: boolean;
+	imageCompressionSize?: any;
+	textScale?: number;
+	widescreenMode?: null;
+	largeTextAsFile?: boolean;
+	promptAutocomplete?: boolean;
+	hapticFeedback?: boolean;
+	responseAutoCopy?: any;
+	richTextInput?: boolean;
+	params?: any;
+	userLocation?: any;
+	webSearch?: any;
+	memory?: boolean;
+	autoTags?: boolean;
+	autoFollowUps?: boolean;
+	splitLargeChunks?(body: any, splitLargeChunks: any): unknown;
+	backgroundImageUrl?: null;
+	landingPageMode?: string;
+	iframeSandboxAllowForms?: boolean;
+	iframeSandboxAllowSameOrigin?: boolean;
+	scrollOnBranchChange?: boolean;
+	directConnections?: null;
+	chatBubble?: boolean;
+	copyFormatted?: boolean;
 	models?: string[];
 	conversationMode?: boolean;
 	speechAutoSend?: boolean;
@@ -139,14 +199,14 @@ type Settings = {
 	audio?: AudioSettings;
 	showUsername?: boolean;
 	notificationEnabled?: boolean;
+	highContrastMode?: boolean;
 	title?: TitleSettings;
+	showChatTitleInTab?: boolean;
 	splitLargeDeltas?: boolean;
-	chatDirection: 'LTR' | 'RTL' | 'auto';
+	chatDirection?: 'LTR' | 'RTL' | 'auto';
 	ctrlEnterToSend?: boolean;
 
 	system?: string;
-	requestFormat?: string;
-	keepAlive?: string;
 	seed?: number;
 	temperature?: string;
 	repeat_penalty?: string;
@@ -163,6 +223,8 @@ type ModelOptions = {
 };
 
 type AudioSettings = {
+	stt: any;
+	tts: any;
 	STTEngine?: string;
 	TTSEngine?: string;
 	speaker?: string;
@@ -193,6 +255,7 @@ type Document = {
 };
 
 type Config = {
+	license_metadata: any;
 	status: boolean;
 	name: string;
 	version: string;
@@ -202,7 +265,7 @@ type Config = {
 	features: {
 		auth: boolean;
 		auth_trusted_header: boolean;
-		enable_api_key: boolean;
+		enable_api_keys: boolean;
 		enable_signup: boolean;
 		enable_login_form: boolean;
 		enable_web_search?: boolean;
@@ -212,12 +275,20 @@ type Config = {
 		enable_admin_export: boolean;
 		enable_admin_chat_access: boolean;
 		enable_community_sharing: boolean;
+		enable_memories: boolean;
 		enable_autocomplete_generation: boolean;
+		enable_direct_connections: boolean;
+		enable_version_update_check: boolean;
+		folder_max_file_count?: number;
 	};
 	oauth: {
 		providers: {
 			[key: string]: string;
 		};
+	};
+	ui?: {
+		pending_user_overlay_title?: string;
+		pending_user_overlay_content?: string;
 	};
 };
 
@@ -226,7 +297,8 @@ type PromptSuggestion = {
 	title: [string, string];
 };
 
-type SessionUser = {
+export type SessionUser = {
+	permissions: any;
 	id: string;
 	email: string;
 	name: string;

@@ -1,17 +1,19 @@
 <script>
+	import { toast } from 'svelte-sonner';
 	import { getContext, onMount, tick } from 'svelte';
 
 	const i18n = getContext('i18n');
 
-	import CodeEditor from '$lib/components/common/CodeEditor.svelte';
 	import { goto } from '$app/navigation';
+	import { user } from '$lib/stores';
+	import { updateToolAccessGrants } from '$lib/apis/tools';
+
+	import CodeEditor from '$lib/components/common/CodeEditor.svelte';
 	import ConfirmDialog from '$lib/components/common/ConfirmDialog.svelte';
-	import Badge from '$lib/components/common/Badge.svelte';
 	import ChevronLeft from '$lib/components/icons/ChevronLeft.svelte';
 	import Tooltip from '$lib/components/common/Tooltip.svelte';
 	import LockClosed from '$lib/components/icons/LockClosed.svelte';
 	import AccessControlModal from '../common/AccessControlModal.svelte';
-	import { user } from '$lib/stores';
 
 	let formElement = null;
 	let loading = false;
@@ -30,7 +32,7 @@
 		description: ''
 	};
 	export let content = '';
-	export let accessControl = null;
+	export let accessGrants = [];
 
 	let _content = '';
 
@@ -50,22 +52,20 @@
 	let boilerplate = `import os
 import requests
 from datetime import datetime
-
+from pydantic import BaseModel, Field
 
 class Tools:
     def __init__(self):
         pass
 
-    # Add your custom tools using pure Python code here, make sure to add type hints
-    # Use Sphinx-style docstrings to document your tools, they will be used for generating tools specifications
-    # Please refer to function_calling_filter_pipeline.py file from pipelines project for an example
-
+    # Add your custom tools using pure Python code here, make sure to add type hints and descriptions
+	
     def get_user_name_and_email_and_id(self, __user__: dict = {}) -> str:
         """
         Get the user name, Email and ID from the user object.
         """
 
-        # Do not include :param for __user__ in the docstring as it should not be shown in the tool's specification
+        # Do not include a descrption for __user__ as it should not be shown in the tool's specification
         # The session user object will be passed as a parameter when the function is called
 
         print(__user__)
@@ -86,7 +86,6 @@ class Tools:
     def get_current_time(self) -> str:
         """
         Get the current time in a more human-readable format.
-        :return: The current time.
         """
 
         now = datetime.now()
@@ -97,10 +96,14 @@ class Tools:
 
         return f"Current Date and Time = {current_date}, {current_time}"
 
-    def calculator(self, equation: str) -> str:
+    def calculator(
+        self,
+        equation: str = Field(
+            ..., description="The mathematical equation to calculate."
+        ),
+    ) -> str:
         """
         Calculate the result of an equation.
-        :param equation: The equation to calculate.
         """
 
         # Avoid using eval in production code
@@ -112,12 +115,16 @@ class Tools:
             print(e)
             return "Invalid equation"
 
-    def get_current_weather(self, city: str) -> str:
+    def get_current_weather(
+        self,
+        city: str = Field(
+            "New York, NY", description="Get the current weather for a given city."
+        ),
+    ) -> str:
         """
         Get the current weather for a given city.
-        :param city: The name of the city to get the weather for.
-        :return: The current weather information or an error message.
         """
+
         api_key = os.getenv("OPENWEATHER_API_KEY")
         if not api_key:
             return (
@@ -156,7 +163,7 @@ class Tools:
 			name,
 			meta,
 			content,
-			access_control: accessControl
+			access_grants: accessGrants
 		});
 	};
 
@@ -182,9 +189,20 @@ class Tools:
 
 <AccessControlModal
 	bind:show={showAccessControlModal}
-	bind:accessControl
+	bind:accessGrants
 	accessRoles={['read', 'write']}
-	allowPublic={$user?.permissions?.sharing?.public_tools || $user?.role === 'admin'}
+	share={$user?.permissions?.sharing?.tools || $user?.role === 'admin'}
+	sharePublic={$user?.permissions?.sharing?.public_tools || $user?.role === 'admin' || edit}
+	onChange={async () => {
+		if (edit && id) {
+			try {
+				await updateToolAccessGrants(localStorage.token, id, accessGrants);
+				toast.success($i18n.t('Saved'));
+			} catch (error) {
+				toast.error(`${error}`);
+			}
+		}
+	}}
 />
 
 <div class=" flex flex-col justify-between w-full overflow-y-auto h-full">

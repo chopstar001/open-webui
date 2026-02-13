@@ -13,12 +13,11 @@ import aiohttp
 import os
 import logging
 import shutil
-import requests
 from pydantic import BaseModel
 from starlette.responses import FileResponse
 from typing import Optional
 
-from open_webui.env import SRC_LOG_LEVELS
+from open_webui.env import AIOHTTP_CLIENT_SESSION_SSL
 from open_webui.config import CACHE_DIR
 from open_webui.constants import ERROR_MESSAGES
 
@@ -28,7 +27,6 @@ from open_webui.routers.openai import get_all_models_responses
 from open_webui.utils.auth import get_admin_user
 
 log = logging.getLogger(__name__)
-log.setLevel(SRC_LOG_LEVELS["MAIN"])
 
 
 ##################################
@@ -66,10 +64,13 @@ async def process_pipeline_inlet_filter(request, payload, user, models):
     if "pipeline" in model:
         sorted_filters.append(model)
 
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(trust_env=True) as session:
         for filter in sorted_filters:
             urlIdx = filter.get("urlIdx")
-            if urlIdx is None:
+
+            try:
+                urlIdx = int(urlIdx)
+            except:
                 continue
 
             url = request.app.state.config.OPENAI_API_BASE_URLS[urlIdx]
@@ -89,6 +90,7 @@ async def process_pipeline_inlet_filter(request, payload, user, models):
                     f"{url}/{filter['id']}/filter/inlet",
                     headers=headers,
                     json=request_data,
+                    ssl=AIOHTTP_CLIENT_SESSION_SSL,
                 ) as response:
                     payload = await response.json()
                     response.raise_for_status()
@@ -115,10 +117,13 @@ async def process_pipeline_outlet_filter(request, payload, user, models):
     if "pipeline" in model:
         sorted_filters = [model] + sorted_filters
 
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(trust_env=True) as session:
         for filter in sorted_filters:
             urlIdx = filter.get("urlIdx")
-            if urlIdx is None:
+
+            try:
+                urlIdx = int(urlIdx)
+            except:
                 continue
 
             url = request.app.state.config.OPENAI_API_BASE_URLS[urlIdx]
@@ -138,6 +143,7 @@ async def process_pipeline_outlet_filter(request, payload, user, models):
                     f"{url}/{filter['id']}/filter/outlet",
                     headers=headers,
                     json=request_data,
+                    ssl=AIOHTTP_CLIENT_SESSION_SSL,
                 ) as response:
                     payload = await response.json()
                     response.raise_for_status()
@@ -197,8 +203,10 @@ async def upload_pipeline(
     user=Depends(get_admin_user),
 ):
     log.info(f"upload_pipeline: urlIdx={urlIdx}, filename={file.filename}")
+    filename = os.path.basename(file.filename)
+
     # Check if the uploaded file is a python file
-    if not (file.filename and file.filename.endswith(".py")):
+    if not (filename and filename.endswith(".py")):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only Python (.py) files are allowed.",
@@ -206,9 +214,9 @@ async def upload_pipeline(
 
     upload_folder = f"{CACHE_DIR}/pipelines"
     os.makedirs(upload_folder, exist_ok=True)
-    file_path = os.path.join(upload_folder, file.filename)
+    file_path = os.path.join(upload_folder, filename)
 
-    r = None
+    response = None
     try:
         # Save the uploaded file
         with open(file_path, "wb") as buffer:
@@ -217,16 +225,25 @@ async def upload_pipeline(
         url = request.app.state.config.OPENAI_API_BASE_URLS[urlIdx]
         key = request.app.state.config.OPENAI_API_KEYS[urlIdx]
 
-        with open(file_path, "rb") as f:
-            files = {"file": f}
-            r = requests.post(
-                f"{url}/pipelines/upload",
-                headers={"Authorization": f"Bearer {key}"},
-                files=files,
+        headers = {"Authorization": f"Bearer {key}"}
+
+        async with aiohttp.ClientSession(trust_env=True) as session:
+            form_data = aiohttp.FormData()
+            form_data.add_field(
+                "file",
+                open(file_path, "rb"),
+                filename=filename,
+                content_type="application/octet-stream",
             )
 
-        r.raise_for_status()
-        data = r.json()
+            async with session.post(
+                f"{url}/pipelines/upload",
+                headers=headers,
+                data=form_data,
+                ssl=AIOHTTP_CLIENT_SESSION_SSL,
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
 
         return {**data}
     except Exception as e:
@@ -235,10 +252,10 @@ async def upload_pipeline(
 
         detail = None
         status_code = status.HTTP_404_NOT_FOUND
-        if r is not None:
-            status_code = r.status_code
+        if response is not None:
+            status_code = response.status
             try:
-                res = r.json()
+                res = await response.json()
                 if "detail" in res:
                     detail = res["detail"]
             except Exception:
@@ -263,21 +280,22 @@ class AddPipelineForm(BaseModel):
 async def add_pipeline(
     request: Request, form_data: AddPipelineForm, user=Depends(get_admin_user)
 ):
-    r = None
+    response = None
     try:
         urlIdx = form_data.urlIdx
 
         url = request.app.state.config.OPENAI_API_BASE_URLS[urlIdx]
         key = request.app.state.config.OPENAI_API_KEYS[urlIdx]
 
-        r = requests.post(
-            f"{url}/pipelines/add",
-            headers={"Authorization": f"Bearer {key}"},
-            json={"url": form_data.url},
-        )
-
-        r.raise_for_status()
-        data = r.json()
+        async with aiohttp.ClientSession(trust_env=True) as session:
+            async with session.post(
+                f"{url}/pipelines/add",
+                headers={"Authorization": f"Bearer {key}"},
+                json={"url": form_data.url},
+                ssl=AIOHTTP_CLIENT_SESSION_SSL,
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
 
         return {**data}
     except Exception as e:
@@ -285,16 +303,18 @@ async def add_pipeline(
         log.exception(f"Connection error: {e}")
 
         detail = None
-        if r is not None:
+        if response is not None:
             try:
-                res = r.json()
+                res = await response.json()
                 if "detail" in res:
                     detail = res["detail"]
             except Exception:
                 pass
 
         raise HTTPException(
-            status_code=(r.status_code if r is not None else status.HTTP_404_NOT_FOUND),
+            status_code=(
+                response.status if response is not None else status.HTTP_404_NOT_FOUND
+            ),
             detail=detail if detail else "Pipeline not found",
         )
 
@@ -308,21 +328,22 @@ class DeletePipelineForm(BaseModel):
 async def delete_pipeline(
     request: Request, form_data: DeletePipelineForm, user=Depends(get_admin_user)
 ):
-    r = None
+    response = None
     try:
         urlIdx = form_data.urlIdx
 
         url = request.app.state.config.OPENAI_API_BASE_URLS[urlIdx]
         key = request.app.state.config.OPENAI_API_KEYS[urlIdx]
 
-        r = requests.delete(
-            f"{url}/pipelines/delete",
-            headers={"Authorization": f"Bearer {key}"},
-            json={"id": form_data.id},
-        )
-
-        r.raise_for_status()
-        data = r.json()
+        async with aiohttp.ClientSession(trust_env=True) as session:
+            async with session.delete(
+                f"{url}/pipelines/delete",
+                headers={"Authorization": f"Bearer {key}"},
+                json={"id": form_data.id},
+                ssl=AIOHTTP_CLIENT_SESSION_SSL,
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
 
         return {**data}
     except Exception as e:
@@ -330,16 +351,18 @@ async def delete_pipeline(
         log.exception(f"Connection error: {e}")
 
         detail = None
-        if r is not None:
+        if response is not None:
             try:
-                res = r.json()
+                res = await response.json()
                 if "detail" in res:
                     detail = res["detail"]
             except Exception:
                 pass
 
         raise HTTPException(
-            status_code=(r.status_code if r is not None else status.HTTP_404_NOT_FOUND),
+            status_code=(
+                response.status if response is not None else status.HTTP_404_NOT_FOUND
+            ),
             detail=detail if detail else "Pipeline not found",
         )
 
@@ -348,15 +371,19 @@ async def delete_pipeline(
 async def get_pipelines(
     request: Request, urlIdx: Optional[int] = None, user=Depends(get_admin_user)
 ):
-    r = None
+    response = None
     try:
         url = request.app.state.config.OPENAI_API_BASE_URLS[urlIdx]
         key = request.app.state.config.OPENAI_API_KEYS[urlIdx]
 
-        r = requests.get(f"{url}/pipelines", headers={"Authorization": f"Bearer {key}"})
-
-        r.raise_for_status()
-        data = r.json()
+        async with aiohttp.ClientSession(trust_env=True) as session:
+            async with session.get(
+                f"{url}/pipelines",
+                headers={"Authorization": f"Bearer {key}"},
+                ssl=AIOHTTP_CLIENT_SESSION_SSL,
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
 
         return {**data}
     except Exception as e:
@@ -364,16 +391,18 @@ async def get_pipelines(
         log.exception(f"Connection error: {e}")
 
         detail = None
-        if r is not None:
+        if response is not None:
             try:
-                res = r.json()
+                res = await response.json()
                 if "detail" in res:
                     detail = res["detail"]
             except Exception:
                 pass
 
         raise HTTPException(
-            status_code=(r.status_code if r is not None else status.HTTP_404_NOT_FOUND),
+            status_code=(
+                response.status if response is not None else status.HTTP_404_NOT_FOUND
+            ),
             detail=detail if detail else "Pipeline not found",
         )
 
@@ -385,17 +414,19 @@ async def get_pipeline_valves(
     pipeline_id: str,
     user=Depends(get_admin_user),
 ):
-    r = None
+    response = None
     try:
         url = request.app.state.config.OPENAI_API_BASE_URLS[urlIdx]
         key = request.app.state.config.OPENAI_API_KEYS[urlIdx]
 
-        r = requests.get(
-            f"{url}/{pipeline_id}/valves", headers={"Authorization": f"Bearer {key}"}
-        )
-
-        r.raise_for_status()
-        data = r.json()
+        async with aiohttp.ClientSession(trust_env=True) as session:
+            async with session.get(
+                f"{url}/{pipeline_id}/valves",
+                headers={"Authorization": f"Bearer {key}"},
+                ssl=AIOHTTP_CLIENT_SESSION_SSL,
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
 
         return {**data}
     except Exception as e:
@@ -403,16 +434,18 @@ async def get_pipeline_valves(
         log.exception(f"Connection error: {e}")
 
         detail = None
-        if r is not None:
+        if response is not None:
             try:
-                res = r.json()
+                res = await response.json()
                 if "detail" in res:
                     detail = res["detail"]
             except Exception:
                 pass
 
         raise HTTPException(
-            status_code=(r.status_code if r is not None else status.HTTP_404_NOT_FOUND),
+            status_code=(
+                response.status if response is not None else status.HTTP_404_NOT_FOUND
+            ),
             detail=detail if detail else "Pipeline not found",
         )
 
@@ -424,18 +457,19 @@ async def get_pipeline_valves_spec(
     pipeline_id: str,
     user=Depends(get_admin_user),
 ):
-    r = None
+    response = None
     try:
         url = request.app.state.config.OPENAI_API_BASE_URLS[urlIdx]
         key = request.app.state.config.OPENAI_API_KEYS[urlIdx]
 
-        r = requests.get(
-            f"{url}/{pipeline_id}/valves/spec",
-            headers={"Authorization": f"Bearer {key}"},
-        )
-
-        r.raise_for_status()
-        data = r.json()
+        async with aiohttp.ClientSession(trust_env=True) as session:
+            async with session.get(
+                f"{url}/{pipeline_id}/valves/spec",
+                headers={"Authorization": f"Bearer {key}"},
+                ssl=AIOHTTP_CLIENT_SESSION_SSL,
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
 
         return {**data}
     except Exception as e:
@@ -443,16 +477,18 @@ async def get_pipeline_valves_spec(
         log.exception(f"Connection error: {e}")
 
         detail = None
-        if r is not None:
+        if response is not None:
             try:
-                res = r.json()
+                res = await response.json()
                 if "detail" in res:
                     detail = res["detail"]
             except Exception:
                 pass
 
         raise HTTPException(
-            status_code=(r.status_code if r is not None else status.HTTP_404_NOT_FOUND),
+            status_code=(
+                response.status if response is not None else status.HTTP_404_NOT_FOUND
+            ),
             detail=detail if detail else "Pipeline not found",
         )
 
@@ -465,19 +501,20 @@ async def update_pipeline_valves(
     form_data: dict,
     user=Depends(get_admin_user),
 ):
-    r = None
+    response = None
     try:
         url = request.app.state.config.OPENAI_API_BASE_URLS[urlIdx]
         key = request.app.state.config.OPENAI_API_KEYS[urlIdx]
 
-        r = requests.post(
-            f"{url}/{pipeline_id}/valves/update",
-            headers={"Authorization": f"Bearer {key}"},
-            json={**form_data},
-        )
-
-        r.raise_for_status()
-        data = r.json()
+        async with aiohttp.ClientSession(trust_env=True) as session:
+            async with session.post(
+                f"{url}/{pipeline_id}/valves/update",
+                headers={"Authorization": f"Bearer {key}"},
+                json={**form_data},
+                ssl=AIOHTTP_CLIENT_SESSION_SSL,
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
 
         return {**data}
     except Exception as e:
@@ -486,15 +523,17 @@ async def update_pipeline_valves(
 
         detail = None
 
-        if r is not None:
+        if response is not None:
             try:
-                res = r.json()
+                res = await response.json()
                 if "detail" in res:
                     detail = res["detail"]
             except Exception:
                 pass
 
         raise HTTPException(
-            status_code=(r.status_code if r is not None else status.HTTP_404_NOT_FOUND),
+            status_code=(
+                response.status if response is not None else status.HTTP_404_NOT_FOUND
+            ),
             detail=detail if detail else "Pipeline not found",
         )

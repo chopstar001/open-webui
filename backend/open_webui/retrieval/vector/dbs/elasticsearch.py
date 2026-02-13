@@ -2,7 +2,14 @@ from elasticsearch import Elasticsearch, BadRequestError
 from typing import Optional
 import ssl
 from elasticsearch.helpers import bulk, scan
-from open_webui.retrieval.vector.main import VectorItem, SearchResult, GetResult
+
+from open_webui.retrieval.vector.utils import process_metadata
+from open_webui.retrieval.vector.main import (
+    VectorDBBase,
+    VectorItem,
+    SearchResult,
+    GetResult,
+)
 from open_webui.config import (
     ELASTICSEARCH_URL,
     ELASTICSEARCH_CA_CERTS,
@@ -15,7 +22,7 @@ from open_webui.config import (
 )
 
 
-class ElasticsearchClient:
+class ElasticsearchClient(VectorDBBase):
     """
     Important:
     in order to reduce the number of indexes and since the embedding vector length is fixed, we avoid creating
@@ -146,7 +153,11 @@ class ElasticsearchClient:
 
     # Status: works
     def search(
-        self, collection_name: str, vectors: list[list[float]], limit: int
+        self,
+        collection_name: str,
+        vectors: list[list[float]],
+        filter: Optional[dict] = None,
+        limit: int = 10,
     ) -> Optional[SearchResult]:
         query = {
             "size": limit,
@@ -238,7 +249,7 @@ class ElasticsearchClient:
                         "collection": collection_name,
                         "vector": item["vector"],
                         "text": item["text"],
-                        "metadata": item["metadata"],
+                        "metadata": process_metadata(item["metadata"]),
                     },
                 }
                 for item in batch
@@ -259,7 +270,7 @@ class ElasticsearchClient:
                         "collection": collection_name,
                         "vector": item["vector"],
                         "text": item["text"],
-                        "metadata": item["metadata"],
+                        "metadata": process_metadata(item["metadata"]),
                     },
                     "doc_as_upsert": True,
                 }
