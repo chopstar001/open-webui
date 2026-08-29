@@ -17,7 +17,7 @@
 	export let getModels: Function;
 
 	// General
-	let themes = ['dark', 'light', 'oled-dark'];
+	let themes = ['dark', 'light', 'oled-dark', 'tasa'];
 	let selectedTheme = 'system';
 
 	let languages: Awaited<ReturnType<typeof getLanguages>> = [];
@@ -111,7 +111,7 @@
 	};
 
 	onMount(async () => {
-		selectedTheme = localStorage.theme ?? 'system';
+		selectedTheme = localStorage.theme ?? 'tasa';
 
 		languages = await getLanguages();
 
@@ -126,7 +126,7 @@
 	});
 
 	const applyTheme = (_theme: string) => {
-		let themeToApply = _theme === 'oled-dark' ? 'dark' : _theme === 'her' ? 'light' : _theme;
+		let themeToApply = _theme === 'oled-dark' ? 'dark' : _theme === 'her' || _theme === 'tasa' ? 'light' : _theme;
 
 		if (_theme === 'system') {
 			themeToApply = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
@@ -151,6 +151,10 @@
 			document.documentElement.classList.add(e);
 		});
 
+		if (_theme === 'tasa') {
+			document.documentElement.classList.add('tasa');
+		}
+
 		const metaThemeColor = document.querySelector('meta[name="theme-color"]');
 		if (metaThemeColor) {
 			if (_theme.includes('system')) {
@@ -169,6 +173,8 @@
 							? '#000000'
 							: _theme === 'her'
 								? '#983724'
+									: _theme === 'tasa'
+										? '#f34607'
 								: '#ffffff'
 				);
 			}
@@ -215,6 +221,7 @@
 					<option value="dark">🌑 {$i18n.t('Dark')}</option>
 					<option value="oled-dark">🌃 {$i18n.t('OLED Dark')}</option>
 					<option value="light">☀️ {$i18n.t('Light')}</option>
+								<option value="tasa">🔥 ${$i18n.t('TASA')}</option>
 					{#if $config?.features?.enable_easter_eggs}
 						<option value="her">🌷 Her</option>
 					{/if}
@@ -246,9 +253,6 @@
 						href="https://github.com/open-webui/open-webui/blob/main/docs/CONTRIBUTING.md#-translations-and-internationalization"
 						target="_blank"
 					>
-						<!-- LICENSE covers this Open WebUI wordmark.
-						Do not alter, remove, obscure, or replace it except as LICENSE permits:
-						https://docs.openwebui.com/license. -->
 						Help us translate Open WebUI!
 					</a>
 				</div>

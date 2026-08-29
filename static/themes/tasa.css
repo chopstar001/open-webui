@@ -1,0 +1,298 @@
+/*
+ * TASA WebUI Theme
+ * Warm orange/amber light theme based on the Full Armour colour palette.
+ *
+ * Strategy: override Tailwind v4 CSS custom properties so that every
+ * utility class (bg-gray-50, text-gray-700, border-gray-200, etc.)
+ * automatically picks up the warm colour palette.
+ */
+
+/* ---- Override Tailwind's color palette ---- */
+html.tasa {
+    /* Gray scale → warm orange-tinted neutrals */
+    --color-gray-50: #fefaf7 !important;
+    /* warm off-white bg */
+    --color-gray-100: #fff0e8 !important;
+    /* primary pale */
+    --color-gray-200: #f0c8b0 !important;
+    /* peach border */
+    --color-gray-300: #e0b09a !important;
+    /* medium peach */
+    --color-gray-400: #8a6550 !important;
+    /* text light */
+    --color-gray-500: #6b4a3a !important;
+    /* medium brown */
+    --color-gray-600: #5a3a2a !important;
+    /* darker brown */
+    --color-gray-700: #4a2a1a !important;
+    /* dark brown */
+    --color-gray-800: #3a1a0a !important;
+    /* very dark brown */
+    --color-gray-850: #2c1810 !important;
+    /* text colour */
+    --color-gray-900: #1a0e08 !important;
+    /* near-black warm */
+    --color-gray-950: #0d0704 !important;
+    /* warmest near-black */
+
+    /* Blue → orange for focus rings, checkboxes, links */
+    --color-blue-400: #ff6b3a !important;
+    --color-blue-500: #f34607 !important;
+    --color-blue-600: #f34607 !important;
+    --color-blue-700: #c73a06 !important;
+
+    /* Emerald → primary orange for action buttons */
+    --color-emerald-500: #ff6b3a !important;
+    --color-emerald-600: #f34607 !important;
+    --color-emerald-700: #c73a06 !important;
+
+    /* Black → darkest warm brown */
+    --color-black: #1a0e08 !important;
+}
+
+/* ---- Base backgrounds ---- */
+html.tasa {
+    background-color: #fefaf7 !important;
+    color: #2c1810 !important;
+}
+
+html.tasa body {
+    background-color: #fefaf7 !important;
+    color: #2c1810 !important;
+}
+
+/* ---- Sidebar ---- */
+html.tasa #sidebar {
+    background-color: #fff5ee !important;
+    border-color: #f0c8b0 !important;
+}
+
+/* ---- Chat input area ---- */
+html.tasa #chat-input,
+html.tasa #chat-input-container {
+    background-color: #fffaf6 !important;
+}
+
+/* ---- Action buttons (send, etc.) ---- */
+html.tasa button.bg-black {
+    background-color: #f34607 !important;
+}
+
+html.tasa button.bg-black:hover {
+    background-color: #c73a06 !important;
+}
+
+html.tasa button.bg-black>* {
+    fill: #ffffff !important;
+}
+
+html.tasa button.bg-emerald-600 {
+    background-color: #f34607 !important;
+}
+
+html.tasa button.bg-emerald-600:hover {
+    background-color: #c73a06 !important;
+}
+
+html.tasa button.bg-emerald-700 {
+    background-color: #c73a06 !important;
+}
+
+html.tasa .bg-emerald-600 {
+    background-color: #f34607 !important;
+}
+
+html.tasa .bg-emerald-600:hover {
+    background-color: #c73a06 !important;
+}
+
+html.tasa .hover\:bg-emerald-700:hover {
+    background-color: #c73a06 !important;
+}
+
+/* ---- Checkboxes (uses blue-600) ---- */
+html.tasa input[type='checkbox']:checked {
+    background-color: #f34607 !important;
+    border-color: #f34607 !important;
+}
+
+html.tasa input[type='checkbox']:focus {
+    --tw-ring-color: #f34607 !important;
+}
+
+/* ---- Focus rings ---- */
+html.tasa *:focus {
+    --tw-ring-color: rgba(243, 70, 7, 0.3) !important;
+}
+
+html.tasa .focus\:ring-blue-500:focus {
+    --tw-ring-color: #f34607 !important;
+}
+
+html.tasa .focus\:ring-blue-400:focus {
+    --tw-ring-color: #ff6b3a !important;
+}
+
+html.tasa .focus\:border-blue-400:focus,
+html.tasa .focus\:border-blue-500:focus {
+    border-color: #f34607 !important;
+}
+
+/* ---- Links ---- */
+html.tasa a {
+    color: #c73a06 !important;
+}
+
+html.tasa a:hover {
+    color: #f34607 !important;
+}
+
+/* ---- Scrollbar theming ---- */
+html.tasa ::-webkit-scrollbar-thumb {
+    background-color: rgba(243, 70, 7, 0.2) !important;
+    border-color: #fefaf7 !important;
+}
+
+html.tasa ::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(243, 70, 7, 0.35) !important;
+}
+
+/* ---- Code blocks ---- */
+html.tasa pre,
+html.tasa code {
+    background-color: #fff0e8 !important;
+}
+
+html.tasa .hljs {
+    background-color: #fff0e8 !important;
+}
+
+/* ---- Splash screen ---- */
+html.tasa #splash-screen {
+    background: #fefaf7 !important;
+}
+
+/* ---- Buttons with black/white (dark mode) variants that appear in light mode ---- */
+html.tasa .dark\:bg-white {
+    /* These only activate in dark mode, so no override needed for light-based tasa */
+}
+
+/* ---- Modal / dropdown overlays ---- */
+html.tasa .bg-white {
+    background-color: #ffffff !important;
+}
+
+/* Slightly warm tint for specific containers */
+html.tasa .bg-gray-50 {
+    background-color: #fefaf7 !important;
+}
+
+/* ---- Toast notifications ---- */
+html.tasa [data-sonner-toast] {
+    --normal-bg: #fffaf6 !important;
+    --normal-border: #f0c8b0 !important;
+    --normal-text: #2c1810 !important;
+}
+
+/* ---- Selection colour ---- */
+html.tasa ::selection {
+    background-color: rgba(243, 70, 7, 0.2) !important;
+    color: #2c1810 !important;
+}
+
+/* ---- Progress / loading bars ---- */
+html.tasa .bg-gray-900 {
+    background-color: #2c1810 !important;
+}
+
+html.tasa .bg-gray-800 {
+    background-color: #3a1a0a !important;
+}
+
+/* ---- Active / selected sidebar items ---- */
+html.tasa .bg-gray-900,
+html.tasa .dark\:bg-gray-900 {
+    background-color: #fff0e8 !important;
+}
+
+/* ---- Skeleton / shimmer ---- */
+html.tasa .shimmer {
+    background: linear-gradient(110deg,
+            #8a6550 0%,
+            #8a6550 43%,
+            #e0b09a 50%,
+            #8a6550 57%,
+            #8a6550 100%) !important;
+    color: #8a6550 !important;
+}
+
+/* ---- Tippy tooltips ---- */
+html.tasa .tippy-box[data-theme~='dark'] {
+    background-color: #2c1810 !important;
+    border-color: #4a2a1a !important;
+}
+
+/* ---- Override black buttons that appear in light mode (primary CTA) ---- */
+html.tasa .bg-black.text-white {
+    background-color: #f34607 !important;
+}
+
+html.tasa .bg-black.text-white:hover {
+    background-color: #c73a06 !important;
+}
+
+html.tasa .hover\:bg-gray-950:hover {
+    background-color: #c73a06 !important;
+}
+
+/* ---- Input fields ---- */
+html.tasa input[type='text'],
+html.tasa input[type='email'],
+html.tasa input[type='password'],
+html.tasa input[type='search'],
+html.tasa input[type='url'],
+html.tasa input[type='number'],
+html.tasa textarea,
+html.tasa select {
+    background-color: #fffaf6 !important;
+    border-color: #f0c8b0 !important;
+}
+
+html.tasa input:focus,
+html.tasa textarea:focus,
+html.tasa select:focus {
+    border-color: #ff6b3a !important;
+    box-shadow: 0 0 0 2px rgba(243, 70, 7, 0.15) !important;
+}
+
+/* ---- Placeholder text ---- */
+html.tasa input::placeholder,
+html.tasa textarea::placeholder {
+    color: #8a6550 !important;
+    opacity: 0.7;
+}
+
+/* ---- Dividers ---- */
+html.tasa hr {
+    border-color: #f0c8b0 !important;
+}
+
+/* ---- Border colour defaults ---- */
+html.tasa [class*='border-gray-100'] {
+    border-color: #f0c8b0 !important;
+}
+
+html.tasa [class*='border-gray-200'] {
+    border-color: #e0b09a !important;
+}
+
+/* ---- Accent badge / pill (used for active model, status) ---- */
+html.tasa .bg-gray-100.text-black {
+    background-color: #fff0e8 !important;
+    color: #2c1810 !important;
+}
+
+html.tasa .bg-gray-800.text-white {
+    background-color: #3a1a0a !important;
+    color: #fefaf7 !important;
+}

@@ -62,7 +62,7 @@
 		removeTerminalConnection
 	} from '$lib/utils/connections';
 
-	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL } from '$lib/constants';
+	import { WEBUI_API_BASE_URL, WEBUI_BASE_URL, WEBUI_HOSTNAME } from '$lib/constants';
 	import {
 		bestMatchingLanguage,
 		cleanText,
@@ -213,15 +213,13 @@
 				}
 			}
 
-			heartbeatInterval = setInterval(
-				() => {
-					if (_socket.connected) {
-						console.log('Sending heartbeat');
-						_socket.emit('heartbeat', {});
-					}
-				},
-				($config?.features?.websocket_heartbeat_interval ?? 30) * 1000
-			);
+			// Send heartbeat every 30 seconds
+			heartbeatInterval = setInterval(() => {
+				if (_socket.connected) {
+					console.log('Sending heartbeat');
+					_socket.emit('heartbeat', {});
+				}
+			}, 30000);
 
 			if (deploymentId !== null) {
 				WEBUI_DEPLOYMENT_ID.set(deploymentId);
@@ -266,10 +264,6 @@
 			if (heartbeatInterval) {
 				clearInterval(heartbeatInterval);
 				heartbeatInterval = null;
-			}
-
-			if (reason === 'io server disconnect') {
-				_socket.connect();
 			}
 
 			if (details) {
@@ -461,52 +455,8 @@
 		return { toolServer, toolServerData, token };
 	};
 
-	const isDirectTerminalServer = (serverUrl) =>
-		!!serverUrl &&
-		(($settings?.terminalServers ?? []).some((server) => server.url === serverUrl) ||
-			($terminalServers ?? []).some((server) => !server.id && server.url === serverUrl));
-
-	const terminalFileResult = (result, params, serverUrl, chatId) => {
-		const path = result?.path ?? params?.path;
-		const name =
-			result?.name ??
-			String(path ?? '')
-				.split('/')
-				.filter(Boolean)
-				.at(-1) ??
-			'file';
-		const contentType = result?.content_type ?? result?.mime_type ?? 'application/octet-stream';
-
-		return {
-			...(result ?? {}),
-			type: 'file',
-			source: 'open_terminal',
-			displayed: true,
-			terminal_selector: serverUrl,
-			terminal_url: serverUrl,
-			session_id: chatId,
-			path,
-			full_path: result?.full_path ?? path,
-			name,
-			mime_type: contentType,
-			content_type: contentType,
-			page: result?.page ?? params?.page
-		};
-	};
-
 	const executeTool = async (data, cb, chatId) => {
 		const { toolServer, toolServerData, token } = resolveToolServer(data.server?.url);
-		const defaultInline =
-			data?.name === 'display_file' &&
-			data?.params?.path &&
-			data?.params?.inline === undefined &&
-			$settings?.terminalFileDisplay === 'inline' &&
-			isDirectTerminalServer(data.server?.url);
-		const params = defaultInline ? { ...data.params, inline: true } : data?.params;
-		const serverParams = data?.name === 'display_file' && params ? { ...params } : params;
-		if (serverParams && data?.name === 'display_file') {
-			delete serverParams.page;
-		}
 
 		console.log('executeTool', data, toolServer);
 
@@ -515,38 +465,25 @@
 				token,
 				toolServer.url,
 				data?.name,
-				serverParams,
+				data?.params,
 				toolServerData,
 				chatId
 			);
 
 			console.log('executeToolServer', res);
-			const result = Array.isArray(res) ? res[0] : res;
-			const inlineDisplayFile =
-				data?.name === 'display_file' && params?.path && params?.inline === true;
-			const output =
-				inlineDisplayFile && result?.exists !== false
-					? Array.isArray(res)
-						? [terminalFileResult(result, params, toolServer.url, chatId)]
-						: terminalFileResult(result, params, toolServer.url, chatId)
-					: res;
 
-			if (data?.name === 'display_file' && params?.path && !inlineDisplayFile) {
-				if (result?.exists !== false) {
-					displayFileHandler(
-						params.path,
-						{ showControls, showFileNavPath },
-						{ page: params?.page }
-					);
+			if (data?.name === 'display_file' && data?.params?.path) {
+				if (res?.exists !== false) {
+					displayFileHandler(data.params.path, { showControls, showFileNavPath });
 				}
 			}
 
-			if (['write_file'].includes(data?.name) && params?.path) {
-				showFileNavDir.set(result?.path ?? params.path);
+			if (['write_file'].includes(data?.name) && data?.params?.path) {
+				showFileNavDir.set(res?.path ?? data.params.path);
 			}
 
 			if (cb) {
-				cb(structuredClone(output));
+				cb(structuredClone(res));
 			}
 		} else {
 			if (cb) {
@@ -605,9 +542,6 @@
 				if ($settings?.notificationEnabled ?? false) {
 					new Notification(`${data.title} / Open WebUI`, {
 						body: timeStr,
-						// LICENSE covers this Open WebUI notification identifier.
-						// Do not alter, remove, obscure, or replace it except as LICENSE permits:
-						// https://docs.openwebui.com/license.
 						icon: `${WEBUI_BASE_URL}/static/favicon.png`
 					});
 				}
@@ -743,9 +677,6 @@
 						if ($settings?.notificationEnabled ?? false) {
 							new Notification(`${displayTitle} / Open WebUI`, {
 								body: contentPreview,
-								// LICENSE covers this Open WebUI notification identifier.
-								// Do not alter, remove, obscure, or replace it except as LICENSE permits:
-								// https://docs.openwebui.com/license.
 								icon: `${WEBUI_BASE_URL}/static/favicon.png`
 							});
 						}
@@ -851,9 +782,6 @@
 
 				if ($isLastActiveTab) {
 					if ($settings?.notificationEnabled ?? false) {
-						// LICENSE covers this Open WebUI notification identifier.
-						// Do not alter, remove, obscure, or replace it except as LICENSE permits:
-						// https://docs.openwebui.com/license.
 						new Notification(`${title} / Open WebUI`, {
 							body: data?.content,
 							icon: `${WEBUI_API_BASE_URL}/users/${data?.user?.id}/profile/image`
@@ -984,9 +912,9 @@
 			theme.set(newTheme);
 
 			// Apply theme classes (mirrors logic from chat/Settings/General.svelte)
-			const themes = ['dark', 'light', 'oled-dark'];
+			const themes = ['dark', 'light', 'oled-dark', 'tasa'];
 			let themeToApply =
-				newTheme === 'oled-dark' ? 'dark' : newTheme === 'her' ? 'light' : newTheme;
+				newTheme === 'oled-dark' ? 'dark' : newTheme === 'her' || newTheme === 'tasa' ? 'light' : newTheme;
 			if (newTheme === 'system') {
 				themeToApply = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 			}
@@ -996,6 +924,30 @@
 					e.split(' ').forEach((cls) => document.documentElement.classList.remove(cls));
 				});
 			themeToApply.split(' ').forEach((cls) => document.documentElement.classList.add(cls));
+			if (newTheme === 'tasa') {
+				document.documentElement.classList.add('tasa');
+				document.documentElement.style.setProperty('--color-gray-50', '#fefaf7');
+				document.documentElement.style.setProperty('--color-gray-100', '#fff0e8');
+				document.documentElement.style.setProperty('--color-gray-200', '#f0c8b0');
+				document.documentElement.style.setProperty('--color-gray-300', '#e0b09a');
+				document.documentElement.style.setProperty('--color-gray-400', '#8a6550');
+				document.documentElement.style.setProperty('--color-gray-500', '#6b4a3a');
+				document.documentElement.style.setProperty('--color-gray-600', '#5a3a2a');
+				document.documentElement.style.setProperty('--color-gray-700', '#4a2a1a');
+				document.documentElement.style.setProperty('--color-gray-800', '#3a1a0a');
+				document.documentElement.style.setProperty('--color-gray-850', '#2c1810');
+				document.documentElement.style.setProperty('--color-gray-900', '#1a0e08');
+				document.documentElement.style.setProperty('--color-gray-950', '#0d0704');
+				document.documentElement.style.setProperty('--color-blue-400', '#ff6b3a');
+				document.documentElement.style.setProperty('--color-blue-500', '#f34607');
+				document.documentElement.style.setProperty('--color-blue-600', '#f34607');
+				document.documentElement.style.setProperty('--color-blue-700', '#c73a06');
+				document.documentElement.style.setProperty('--color-emerald-500', '#ff6b3a');
+				document.documentElement.style.setProperty('--color-emerald-600', '#f34607');
+				document.documentElement.style.setProperty('--color-emerald-700', '#c73a06');
+			} else {
+				['--color-gray-50','--color-gray-100','--color-gray-200','--color-gray-300','--color-gray-400','--color-gray-500','--color-gray-600','--color-gray-700','--color-gray-800','--color-gray-850','--color-gray-900','--color-gray-950','--color-blue-400','--color-blue-500','--color-blue-600','--color-blue-700','--color-emerald-500','--color-emerald-600','--color-emerald-700'].forEach((prop) => document.documentElement.style.removeProperty(prop));
+			}
 			return;
 		}
 		if (event.type === 'models:refresh') {
@@ -1253,10 +1205,6 @@
 		if (backendConfig) {
 			// Save Backend Status to Store
 			await config.set(backendConfig);
-			// LICENSE covers this Open WebUI branding surface, including name, logo,
-			// visual, textual, symbolic identifiers, metadata, and surrounding UI.
-			// Do not alter, remove, obscure, or replace it except as LICENSE permits:
-			// https://docs.openwebui.com/license.
 			await WEBUI_NAME.set(backendConfig.name);
 
 			if ($config) {
@@ -1369,10 +1317,6 @@
 </script>
 
 <svelte:head>
-	<!-- LICENSE covers this Open WebUI branding surface, including name, logo,
-	visual, textual, symbolic identifiers, metadata, and surrounding UI.
-	Do not alter, remove, obscure, or replace it except as LICENSE permits:
-	https://docs.openwebui.com/license. -->
 	<title>{$WEBUI_NAME}</title>
 	<link crossorigin="anonymous" rel="icon" href="{WEBUI_BASE_URL}/static/favicon.png" />
 
