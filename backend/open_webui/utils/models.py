@@ -186,7 +186,13 @@ async def get_all_models(request, refresh: bool = False, user: UserModel = None)
                     model['action_ids'] = action_ids
                     model['filter_ids'] = filter_ids
                 else:
-                    models = [m for m in models if m is not model]
+                    # Keep disabled base models in the list so the UI can re-enable them
+                    model['is_active'] = False
+                    model['info'] = custom_model.model_dump()
+                    if 'params' in model.get('info', {}):
+                        del model['info']['params']
+                    model['action_ids'] = []
+                    model['filter_ids'] = []
 
         elif custom_model.is_active:
             if custom_model.id in existing_ids:
