@@ -100,7 +100,7 @@
 					{/each}
 				</div>
 			</div>
-		{:else if status?.action === 'sources_retrieved' && status?.count !== undefined}
+		{:else if status?.action === 'sources_retrieved' && status?.count !== undefined && status?.count > 0}
 			<div class="flex flex-col justify-center -space-y-0.5">
 				<div
 					class="{(done || status?.done) === false
