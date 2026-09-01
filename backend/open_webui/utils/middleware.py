@@ -5064,6 +5064,17 @@ async def streaming_chat_response_handler(response, ctx):
                                                             'item': item.copy(),
                                                         }
                                                     )
+                                                    await event_emitter(
+                                                        {
+                                                            'type': 'status',
+                                                            'data': {
+                                                                'action': 'tool_call',
+                                                                'description': f'Preparing tool: {func.get("name", "unknown")}',
+                                                                'tool_name': func.get('name', ''),
+                                                                'done': False,
+                                                            },
+                                                        }
+                                                    )
                                                     item['arguments'] = func.get('arguments', '')
 
                                             for delta_tool_call in delta_tool_calls:
@@ -5262,6 +5273,23 @@ async def streaming_chat_response_handler(response, ctx):
                                                 },
                                                 user,
                                             )
+
+                                        # Detect embedded status events from A0 bridge
+                                        # Format: <!--STATUS:{"action":"...","description":"...","done":false}-->
+                                        if value and '<!--STATUS:' in value:
+                                            import re as _re
+                                            for _m in _re.finditer(r'<!--STATUS:(.*?)-->', value):
+                                                try:
+                                                    _status_data = json.loads(_m.group(1))
+                                                    await event_emitter({
+                                                        'type': 'status',
+                                                        'data': _status_data,
+                                                    })
+                                                except Exception:
+                                                    pass
+                                            value = _re.sub(r'<!--STATUS:.*?-->', '', value)
+                                            if not value:
+                                                continue
 
                                         # closure-cell str += recopies per chunk; append + join once at read is O(n)
                                         content_parts.append(value)
@@ -5664,6 +5692,18 @@ async def streaming_chat_response_handler(response, ctx):
                     tool_results = {}
                     for tool_call in response_tool_calls:
                         if tool_call.get('function', {}).get('name') != 'delegate_task':
+                            tool_name = tool_call.get('function', {}).get('name', 'unknown')
+                            await event_emitter(
+                                {
+                                    'type': 'status',
+                                    'data': {
+                                        'action': 'tool_call',
+                                        'description': f'Running tool: {tool_name}',
+                                        'tool_name': tool_name,
+                                        'done': False,
+                                    },
+                                }
+                            )
                             tool_results[id(tool_call)] = await execute_tool_call(tool_call)
                     tool_results.update(
                         zip(
@@ -5783,10 +5823,28 @@ async def streaming_chat_response_handler(response, ctx):
                     # Update function_call statuses and parsed/sanitized arguments.
                     for tc in response_tool_calls:
                         call_id = tc.get('id', '')
+                        tool_name = tc.get('function', {}).get('name', 'unknown')
                         for item in output:
                             if item.get('type') == 'function_call' and item.get('call_id') == call_id:
                                 item['status'] = result_status_by_call_id.get(call_id, 'completed')
                                 item['arguments'] = tc.get('function', {}).get('arguments', '{}')
+                                result_status = result_status_by_call_id.get(call_id, 'completed')
+                                await event_emitter(
+                                    {
+                                        'type': 'status',
+                                        'data': {
+                                            'action': 'tool_call',
+                                            'description': (
+                                                f'Tool {tool_name} failed'
+                                                if result_status == 'failed'
+                                                else f'Tool {tool_name} completed'
+                                            ),
+                                            'tool_name': tool_name,
+                                            'done': True,
+                                            'error': result_status == 'failed',
+                                        },
+                                    }
+                                )
                                 break
 
                     # Append a new empty message item for the next response
