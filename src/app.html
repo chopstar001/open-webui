@@ -37,6 +37,7 @@
 
 		<script src="/static/loader.js" defer crossorigin="use-credentials"></script>
 		<link rel="stylesheet" href="/static/custom.css" crossorigin="use-credentials" />
+		<link rel="stylesheet" href="/themes/tasa.css" crossorigin="use-credentials" />
 
 		<script>
 			function resizeIframe(obj) {
@@ -70,6 +71,9 @@
 				} else if (localStorage.theme === 'her') {
 					document.documentElement.classList.add('her');
 					metaThemeColorTag.setAttribute('content', '#983724');
+				} else if (localStorage.theme === 'tasa') {
+					document.documentElement.classList.add('tasa');
+					metaThemeColorTag.setAttribute('content', '#ffffff');
 				} else {
 					document.documentElement.classList.add('dark');
 					metaThemeColorTag.setAttribute('content', '#171717');
