@@ -5537,6 +5537,23 @@ async def streaming_chat_response_handler(response, ctx):
                                                 data = None
 
                                     if value:
+                                        # Detect embedded status events from A0 bridge
+                                        # Format: <!--STATUS:{"action":"...","description":"...","done":false}-->
+                                        if '<!--STATUS:' in value:
+                                            import re as _re
+                                            for _m in _re.finditer(r'<!--STATUS:(.*?)-->', value):
+                                                try:
+                                                    _status_data = json.loads(_m.group(1))
+                                                    await event_emitter({
+                                                        'type': 'status',
+                                                        'data': _status_data,
+                                                    })
+                                                except Exception:
+                                                    pass
+                                            value = _re.sub(r'<!--STATUS:.*?-->', '', value)
+                                            if not value:
+                                                continue
+
                                         if (
                                             output
                                             and output[-1].get('type') == 'reasoning'
@@ -5980,6 +5997,18 @@ async def streaming_chat_response_handler(response, ctx):
 
                     async def execute_tool_call(tool_call):
                         name = tool_call.get('function', {}).get('name', '')
+                        tool_name = tool_call.get('function', {}).get('name', 'unknown')
+                        await event_emitter(
+                            {
+                                'type': 'status',
+                                'data': {
+                                    'action': 'tool_call',
+                                    'description': f'Running tool: {tool_name}',
+                                    'tool_name': tool_name,
+                                    'done': False,
+                                },
+                            }
+                        )
                         try:
                             params = parse_tool_params(tool_call)
                         except ValueError:
@@ -6126,6 +6155,24 @@ async def streaming_chat_response_handler(response, ctx):
                             'failed' if _is_tool_result_error(result.get('content', '')) else 'completed'
                         )
                         result_status_by_call_id[result.get('tool_call_id', '')] = local_output_status
+
+                        tool_name = result.get('tool_call_id', 'unknown')
+                        await event_emitter(
+                            {
+                                'type': 'status',
+                                'data': {
+                                    'action': 'tool_call',
+                                    'description': (
+                                        f'Tool {tool_name} failed'
+                                        if local_output_status == 'failed'
+                                        else f'Tool {tool_name} completed'
+                                    ),
+                                    'tool_name': tool_name,
+                                    'done': True,
+                                    'error': local_output_status == 'failed',
+                                },
+                            }
+                        )
 
                         # Separate image data URIs (for LLM via input_image) from
                         # other files (for frontend display via files attribute).

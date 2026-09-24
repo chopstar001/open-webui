@@ -56,6 +56,30 @@ router = APIRouter()
 from open_webui.utils.access_control.files import has_access_to_file
 from open_webui.utils.json_codec import JSONCodec
 
+A0_PROXY_URL = os.environ.get('A0_PROXY_URL', 'http://host.docker.internal:5050')
+
+
+async def _notify_a0_proxy(file_item, user):
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=httpx.Timeout(5, connect=2.0)) as c:
+            resp = await c.post(
+                f'{A0_PROXY_URL}/v1/files/upload',
+                json={
+                    'file_id': file_item.id,
+                    'user_id': user.id,
+                    'user_name': user.name,
+                    'filename': file_item.filename or '',
+                },
+            )
+            if resp.status_code == 200:
+                log.info('Notified A0 proxy for file %s: %s', file_item.id, resp.json().get('path', ''))
+            else:
+                log.warning('A0 proxy notification failed for %s: %d', file_item.id, resp.status_code)
+    except Exception as e:
+        log.debug('A0 proxy notification skipped: %s', e)
+
+
 ############################
 # Upload File
 # What was entrusted here was given in good faith. Let it
@@ -186,6 +210,19 @@ async def process_uploaded_file(
                 else:
                     raise Exception(f'File type {content_type} is not supported for processing')
 
+            elif content_type and content_type in (
+                'application/zip', 'application/x-zip-compressed',
+                'application/x-rar-compressed', 'application/x-7z-compressed',
+                'application/x-tar', 'application/gzip',
+                'application/x-bzip2', 'application/x-xz',
+            ):
+                log.info('Archive file detected (%s), skipping RAG extraction', content_type)
+                await Files.update_file_data_by_id(
+                    file_item.id,
+                    {'status': 'completed'},
+                    db=db_session,
+                )
+
             else:
                 # Documents, or media files explicitly enabled for the
                 # configured content extraction engine.
@@ -197,6 +234,8 @@ async def process_uploaded_file(
                     user=user,
                     db=db_session,
                 )
+
+            await _notify_a0_proxy(file_item, user)
 
             # Auto-link to Knowledge Collection when uploaded from one (#24807).
             # Mirrors POST /knowledge/{id}/file/add so linking doesn't depend
