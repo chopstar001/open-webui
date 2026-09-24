@@ -124,6 +124,13 @@ replace_host_branding() {
 
     # --- app.html ---
     sed -i "s|<title>.*</title>|<title>$NEW_NAME</title>|" src/app.html
+    # Ensure tasa.css stylesheet is linked
+    if ! grep -q 'themes/tasa.css' src/app.html 2>/dev/null; then
+        sed -i 's|<link rel="stylesheet" href="/static/custom.css"|<link rel="stylesheet" href="/themes/tasa.css" crossorigin="use-credentials" />\n\t\t<link rel="stylesheet" href="/static/custom.css"|' src/app.html
+        ok "src/app.html (tasa.css link added)"
+    else
+        ok "src/app.html (tasa.css link already present)"
+    fi
     ok "src/app.html"
 
     # --- site.webmanifest ---
