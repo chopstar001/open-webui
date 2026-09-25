@@ -37,6 +37,7 @@ This file is for AI agents (Kilo) working on the TASA fork of Open WebUI. Read t
 | `backend/open_webui/utils/middleware.py` | A0 bridge `<!--STATUS:-->` detection + tool call status events | Medium |
 | `backend/open_webui/utils/models.py` | Keep disabled base models visible (re-enable bug fix) | Low |
 | `backend/open_webui/routers/files.py` | A0 proxy notification + archive detection (skip RAG for zips) | Low |
+| `backend/open_webui/functions.py` | `execute_pipe` uses `run_in_threadpool` for sync pipes (prevents event loop blocking) | Medium |
 | `src/app.html` | `tasa.css` link, `tasa` theme in inline script | Low |
 | `src/app.css` | `prose-headings:font-normal` (TASA font weight) | Low |
 | `src/lib/constants.ts` | `WEBUI_HOSTNAME`/`WEBUI_BASE_URL` browser-aware | Low |
@@ -113,6 +114,8 @@ docker run -d --name open-webui -p 3000:8080 \
 7. **VS Code History**: File recovery from `~/.config/Code - OSS/User/History/` saved us after `git filter-repo` disaster. Each history directory has `entries.json` (path + timestamps) and snapshot files (actual content). Always take the latest timestamp.
 
 8. **Docker container is a recovery source**: `docker cp open-webui:/app/backend/open_webui/` extracts the backend code from the running container. Useful when git history is lost.
+
+9. **Pipe functions block the event loop**: OWUI's `execute_pipe` in `functions.py` calls sync pipes directly, blocking the async event loop. This makes the entire server unresponsive for ALL users during long-running pipe calls (e.g., Agent Zero with 30-min timeout). Fix: use `run_in_threadpool` for sync pipes. Must be re-applied after every upstream upgrade.
 
 ## Git Remotes
 
