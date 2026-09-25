@@ -158,7 +158,9 @@ async def generate_function_chat_completion(request, form_data, user, models: di
         if inspect.iscoroutinefunction(pipe):
             return await pipe(**params)
         else:
-            return pipe(**params)
+            from fastapi.concurrency import run_in_threadpool
+
+            return await run_in_threadpool(pipe, **params)
 
     async def get_message_content(res: str | Generator | AsyncGenerator) -> str:
         if isinstance(res, str):
