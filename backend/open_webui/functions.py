@@ -166,7 +166,10 @@ async def generate_function_chat_completion(request, form_data, user, models: di
         if isinstance(res, str):
             return res
         if isinstance(res, Generator):
-            return ''.join(map(str, res))
+            from fastapi.concurrency import run_in_threadpool
+
+            chunks = await run_in_threadpool(lambda: list(res))
+            return ''.join(str(c) for c in chunks)
         if isinstance(res, AsyncGenerator):
             return ''.join([str(stream) async for stream in res])
 
@@ -330,7 +333,13 @@ async def generate_function_chat_completion(request, form_data, user, models: di
                 yield f'data: {JSONCodec.dumps(message)}\n\n'
 
             if isinstance(res, Iterator):
-                for line in res:
+                from fastapi.concurrency import run_in_threadpool
+
+                while True:
+                    try:
+                        line = await run_in_threadpool(next, res)
+                    except StopIteration:
+                        break
                     yield process_line(form_data, line)
 
             if isinstance(res, AsyncGenerator):
