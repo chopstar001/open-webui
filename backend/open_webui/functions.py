@@ -335,12 +335,17 @@ async def generate_function_chat_completion(request, form_data, user, models: di
             if isinstance(res, Iterator):
                 from fastapi.concurrency import run_in_threadpool
 
-                while True:
-                    try:
-                        line = await run_in_threadpool(next, res)
-                    except StopIteration:
-                        break
-                    yield process_line(form_data, line)
+                end_of_stream = object()
+
+                try:
+                    while True:
+                        line = await run_in_threadpool(next, res, end_of_stream)
+                        if line is end_of_stream:
+                            break
+                        yield process_line(form_data, line)
+                except Exception as e:
+                    log.error(f'Error while streaming pipe output: {e}')
+                    yield process_line(form_data, f'[Stream error: {e}]')
 
             if isinstance(res, AsyncGenerator):
                 async for line in res:

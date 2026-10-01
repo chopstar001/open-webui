@@ -37,7 +37,7 @@ This file is for AI agents (Kilo) working on the TASA fork of Open WebUI. Read t
 | `backend/open_webui/utils/middleware.py` | A0 bridge `<!--STATUS:-->` detection + tool call status events | Medium |
 | `backend/open_webui/utils/models.py` | Keep disabled base models visible (re-enable bug fix) | Low |
 | `backend/open_webui/routers/files.py` | A0 proxy notification + archive detection (skip RAG for zips) | Low |
-| `backend/open_webui/functions.py` | `execute_pipe` uses `run_in_threadpool` for sync pipes (prevents event loop blocking) | Medium |
+| `backend/open_webui/functions.py` | `execute_pipe` runs sync pipes in `run_in_threadpool`; generator iteration in `stream_content`/`get_message_content` also uses the threadpool (prevents event loop blocking) | Medium |
 | `src/app.html` | `tasa.css` link, `tasa` theme in inline script | Low |
 | `src/app.css` | `prose-headings:font-normal` (TASA font weight) | Low |
 | `src/lib/constants.ts` | `WEBUI_HOSTNAME`/`WEBUI_BASE_URL` browser-aware | Low |
@@ -115,7 +115,18 @@ docker run -d --name open-webui -p 3000:8080 \
 
 8. **Docker container is a recovery source**: `docker cp open-webui:/app/backend/open_webui/` extracts the backend code from the running container. Useful when git history is lost.
 
-9. **Pipe functions block the event loop**: OWUI's `execute_pipe` in `functions.py` calls sync pipes directly, blocking the async event loop. This makes the entire server unresponsive for ALL users during long-running pipe calls (e.g., Agent Zero with 30-min timeout). Fix: use `run_in_threadpool` for sync pipes. Must be re-applied after every upstream upgrade.
+9. **Pipe functions block the event loop**: OWUI's `execute_pipe` in `functions.py` calls sync pipes directly, blocking the async event loop. This makes the entire server unresponsive for ALL users during long-running pipe calls (e.g., Agent Zero with 30-min timeout). Fix: use `run_in_threadpool` for sync pipes, and also for generator consumption in `stream_content` (per-`next()`) and `get_message_content` (`list(res)`). Must be re-applied after every upstream upgrade.
+
+   **StopIteration trap (bit us once)**: when iterating a sync generator in `stream_content`, never use `try: next(res) except StopIteration: break` across `run_in_threadpool`. `StopIteration` cannot cross a coroutine boundary — PEP 479 converts it to `RuntimeError("coroutine raised StopIteration")`, so the handler never fires. The stream dies before the `finish`/`[DONE]` chunks and before middleware's final DB save: replies render live via Socket.IO but vanish on page refresh, with the error text saved in its place. Correct pattern:
+
+   ```python
+   end_of_stream = object()
+   while True:
+       line = await run_in_threadpool(next, res, end_of_stream)
+       if line is end_of_stream:
+           break
+       yield process_line(form_data, line)
+   ```
 
 ## Git Remotes
 
